@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics-Informed Bayesian Optimizer</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM for Logic -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel to compile JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Inline SVGs replacing lucide-react to ensure zero dependencies
+        const Icons = {
+            Cpu: () => <svg width="24" height="24" className="text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>,
+            Zap: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+            Activity: () => <svg width="18" height="18" className="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>,
+            Target: () => <svg width="18" height="18" className="text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+            Settings: () => <svg width="18" height="18" className="text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+            CheckCircle: () => <svg width="16" height="16" className="text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        };
+
+        const ELEMENTS = {
+            Zn: { AW: 65.38, r: 1.34, EN: 1.65 },
+            Al: { AW: 26.98, r: 1.43, EN: 1.61 },
+            Cu: { AW: 63.55, r: 1.28, EN: 1.90 },
+            Mg: { AW: 24.30, r: 1.60, EN: 1.31 },
+        };
+
+        const calculatePhysics = (comp) => {
+            let totalWt = comp.Al + comp.Cu + comp.Mg;
+            let wtZn = 100 - totalWt;
+            
+            let moles = {
+                Zn: wtZn / ELEMENTS.Zn.AW,
+                Al: comp.Al / ELEMENTS.Al.AW,
+                Cu: comp.Cu / ELEMENTS.Cu.AW,
+                Mg: comp.Mg / ELEMENTS.Mg.AW
+            };
+            
+            let totalMoles = moles.Zn + moles.Al + moles.Cu + moles.Mg;
+            let atFrac = {
+                Zn: moles.Zn / totalMoles,
+                Al: moles.Al / totalMoles,
+                Cu: moles.Cu / totalMoles,
+                Mg: moles.Mg / totalMoles
+            };
+
+            let avgR = atFrac.Zn*ELEMENTS.Zn.r + atFrac.Al*ELEMENTS.Al.r + atFrac.Cu*ELEMENTS.Cu.r + atFrac.Mg*ELEMENTS.Mg.r;
+            let avgEN = atFrac.Zn*ELEMENTS.Zn.EN + atFrac.Al*ELEMENTS.Al.EN + atFrac.Cu*ELEMENTS.Cu.EN + atFrac.Mg*ELEMENTS.Mg.EN;
+
+            let deltaSq = atFrac.Zn*Math.pow(1 - ELEMENTS.Zn.r/avgR, 2) + 
+                          atFrac.Al*Math.pow(1 - ELEMENTS.Al.r/avgR, 2) + 
+                          atFrac.Cu*Math.pow(1 - ELEMENTS.Cu.r/avgR, 2) + 
+                          atFrac.Mg*Math.pow(1 - ELEMENTS.Mg.r/avgR, 2);
+            let delta = 100 * Math.sqrt(deltaSq);
+
+            let chiSq = atFrac.Zn*Math.pow(ELEMENTS.Zn.EN - avgEN, 2) + 
+                        atFrac.Al*Math.pow(ELEMENTS.Al.EN - avgEN, 2) + 
+                        atFrac.Cu*Math.pow(ELEMENTS.Cu.EN - avgEN, 2) + 
+                        atFrac.Mg*Math.pow(ELEMENTS.Mg.EN - avgEN, 2);
+            let deltaChi = Math.sqrt(chiSq);
+
+            return { delta, deltaChi };
+        };
+
+        const mockPredictor = (comp, physics) => {
+            const { Al, Cu, Mg } = comp;
+            const { delta, deltaChi } = physics;
+            
+            let UTS = 180 + 18*Al + 12*Cu + 400*Mg - 15*Math.pow(delta - 2.8, 2) - 400*Math.pow(deltaChi - 0.06, 2);
+            let EL = 14 - 1.5*Al - 0.8*Cu - 40*Mg - 2*Math.pow(delta - 3.0, 2) - 80*Math.pow(deltaChi - 0.05, 2);
+            let HV = 50 + 12*Al + 8*Cu + 300*Mg;
+
+            return { UTS: Math.max(0, UTS), EL: Math.max(0, EL), HV: Math.max(0, HV) };
+        };
+
+        function App() {
+            const [targets, setTargets] = useState({ UTS: 300, EL: 3.5, HV: 130 });
+            const [weights, setWeights] = useState({ UTS: 1, EL: 1, HV: 1 });
+            const [isOptimizing, setIsOptimizing] = useState(false);
+            const [iteration, setIteration] = useState(0);
+            const [history, setHistory] = useState([]);
+            const [scatterData, setScatterData] = useState([]);
+            
+            const [bestState, setBestState] = useState({
+                comp: { Al: 0, Cu: 0, Mg: 0 },
+                physics: { delta: 0, deltaChi: 0 },
+                props: { UTS: 0, EL: 0, HV: 0 },
+                error: Infinity
+            });
+
+            const runSimulation = () => {
+                setIsOptimizing(true);
+                setIteration(0);
+                setHistory([]);
+                setScatterData([]);
+                setBestState({ ...bestState, error: Infinity });
+            };
+
+            useEffect(() => {
+                if (!isOptimizing) return;
+
+                let currentIter = 0;
+                const maxIters = 200;
+                let localBestError = Infinity;
+                let localBestState = { ...bestState };
+
+                const interval = setInterval(() => {
+                    if (currentIter >= maxIters) {
+                        setIsOptimizing(false);
+                        clearInterval(interval);
+                        return;
+                    }
+
+                    let searchRadius = 1.0 - (currentIter / maxIters) * 0.9; 
+                    
+                    let comp = {
+                        Al: localBestError === Infinity ? Math.random() * 8 : Math.max(0, Math.min(8, localBestState.comp.Al + (Math.random()-0.5)*searchRadius*4)),
+                        Cu: localBestError === Infinity ? Math.random() * 6 : Math.max(0, Math.min(6, localBestState.comp.Cu + (Math.random()-0.5)*searchRadius*4)),
+                        Mg: localBestError === Infinity ? Math.random() * 0.05 : Math.max(0, Math.min(0.05, localBestState.comp.Mg + (Math.random()-0.5)*searchRadius*0.02))
+                    };
+
+                    let physics = calculatePhysics(comp);
+                    let props = mockPredictor(comp, physics);
+
+                    let rUTS = props.UTS / targets.UTS;
+                    let rEL = props.EL / targets.EL;
+                    let rHV = props.HV / targets.HV;
+                    let error = weights.UTS * Math.abs(1 - rUTS) + weights.EL * Math.abs(1 - rEL) + weights.HV * Math.abs(1 - rHV);
+
+                    if (error < localBestError) {
+                        localBestError = error;
+                        localBestState = { comp, physics, props, error };
+                        setBestState(localBestState);
+                    }
+
+                    setHistory(prev => [...prev, { iteration: currentIter, error: localBestError }]);
+                    setScatterData(prev => [...prev.slice(-99), { delta: physics.delta, deltaChi: physics.deltaChi }]);
+                    
+                    setIteration(currentIter);
+                    currentIter++;
+                }, 50);
+
+                return () => clearInterval(interval);
+            }, [isOptimizing, targets, weights]);
+
+            const generateLinePath = () => {
+                if (history.length === 0) return "";
+                const maxError = Math.max(...history.map(h => h.error), 2);
+                return history.map((h, i) => {
+                    const x = (i / 200) * 100;
+                    const y = 100 - (h.error / maxError) * 100;
+                    return `${x},${Math.max(0, Math.min(100, y))}`;
+                }).join(" ");
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-slate-100 p-6 font-sans">
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        <div className="flex items-center justify-between border-b border-slate-700 pb-4">
+                            <div>
+                                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                                    <Icons.Cpu />
+                                    Physics-Informed Bayesian Optimizer
+                                </h1>
+                                <p className="text-slate-400 text-sm mt-1">Zn-Alloy Inverse Design Simulation Engine</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                    <div className="text-xs text-slate-400 uppercase tracking-wider">Iteration</div>
+                                    <div className="text-xl font-mono text-blue-400">{iteration} / 200</div>
+                                </div>
+                                <button 
+                                    onClick={runSimulation}
+                                    disabled={isOptimizing}
+                                    className={`px-6 py-2 rounded-lg font-semibold flex items-center gap-2 transition-all ${
+                                        isOptimizing ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20'
+                                    }`}
+                                >
+                                    {isOptimizing ? <Icons.Activity /> : <Icons.Zap />}
+                                    {isOptimizing ? 'Optimizing...' : 'Initialize Search'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 space-y-6">
+                                <div>
+                                    <h2 className="text-lg font-semibold flex items-center gap-2 mb-4 text-slate-200">
+                                        <Icons.Target />
+                                        Target Properties
+                                    </h2>
+                                    <div className="space-y-4">
+                                        {['UTS', 'EL', 'HV'].map(prop => (
+                                            <div key={prop} className="flex flex-col gap-1">
+                                                <label className="text-sm font-medium text-slate-400 flex justify-between">
+                                                    <span>{prop} {prop === 'UTS' ? '(MPa)' : prop === 'EL' ? '(%)' : ''}</span>
+                                                    <span className="text-teal-400">{targets[prop]}</span>
+                                                </label>
+                                                <input 
+                                                    type="range" 
+                                                    min={prop === 'EL' ? 0 : 50} 
+                                                    max={prop === 'EL' ? 10 : 400} 
+                                                    step={prop === 'EL' ? 0.1 : 1}
+                                                    value={targets[prop]}
+                                                    disabled={isOptimizing}
+                                                    onChange={(e) => setTargets({...targets, [prop]: parseFloat(e.target.value)})}
+                                                    className="w-full accent-teal-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-slate-700">
+                                    <h2 className="text-lg font-semibold flex items-center gap-2 mb-4 text-slate-200">
+                                        <Icons.Settings />
+                                        Objective Weights
+                                    </h2>
+                                    <div className="space-y-4">
+                                        {['UTS', 'EL', 'HV'].map(prop => (
+                                            <div key={`w-${prop}`} className="flex flex-col gap-1">
+                                                <label className="text-sm font-medium text-slate-400 flex justify-between">
+                                                    <span>{prop} Priority</span>
+                                                    <span className="text-purple-400">{weights[prop]}x</span>
+                                                </label>
+                                                <input 
+                                                    type="range" min="0" max="5" step="0.5"
+                                                    value={weights[prop]}
+                                                    disabled={isOptimizing}
+                                                    onChange={(e) => setWeights({...weights, [prop]: parseFloat(e.target.value)})}
+                                                    className="w-full accent-purple-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-2 space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 h-72 flex flex-col">
+                                        <h3 className="text-sm font-semibold text-slate-400 mb-2">Global Error Convergence</h3>
+                                        <div className="flex-1 grid grid-cols-1 grid-rows-[1fr_auto] gap-y-2 mt-2 ml-2">
+                                            <div className="relative border-l border-b border-slate-600">
+                                                <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100" className="overflow-visible absolute inset-0">
+                                                    <polyline points={generateLinePath()} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
+                                                </svg>
+                                            </div>
+                                            <div className="flex justify-between text-[10px] text-slate-500">
+                                                <span>0 iter</span>
+                                                <span>200 iter</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 h-72 flex flex-col">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h3 className="text-sm font-semibold text-slate-400">Thermodynamic Phase Space</h3>
+                                            <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded border border-emerald-400/20">"Goldilocks Zone"</span>
+                                        </div>
+                                        <div className="flex-1 grid grid-cols-[auto_1fr] grid-rows-[1fr_auto] gap-x-2 gap-y-2 mt-2">
+                                            <div className="flex flex-col justify-between text-[10px] text-slate-500 text-right">
+                                                <span>0.15</span>
+                                                <span>0</span>
+                                            </div>
+                                            <div className="relative border-l border-b border-slate-600">
+                                                <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 100 100" className="overflow-visible absolute inset-0">
+                                                    <rect x="40" y="60" width="40" height="13.33" fill="#10b981" fillOpacity="0.2" />
+                                                    {scatterData.map((pt, i) => (
+                                                        <circle key={i} cx={(pt.delta / 5) * 100} cy={100 - (pt.deltaChi / 0.15) * 100} r="1.5" fill="#8b5cf6" opacity="0.6" />
+                                                    ))}
+                                                    {bestState.error !== Infinity && (
+                                                        <circle cx={(bestState.physics.delta / 5) * 100} cy={100 - (bestState.physics.deltaChi / 0.15) * 100} r="3" fill="#10b981" stroke="#fff" strokeWidth="1" />
+                                                    )}
+                                                </svg>
+                                            </div>
+                                            <div></div>
+                                            <div className="flex justify-between text-[10px] text-slate-500">
+                                                <span>0 δ</span>
+                                                <span>5 δ</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-800 p-5 rounded-xl border border-slate-700">
+                                    <h3 className="text-sm font-semibold text-slate-400 mb-4 flex items-center gap-2">
+                                        <Icons.CheckCircle />
+                                        Current Optimal Configuration
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="bg-slate-900/50 rounded-lg p-4">
+                                            <div className="text-xs text-slate-500 uppercase font-bold mb-3">Composition (wt.%)</div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div><div className="text-xs text-slate-400">Aluminum</div><div className="text-lg font-mono text-white">{bestState.comp.Al.toFixed(2)}</div></div>
+                                                <div><div className="text-xs text-slate-400">Copper</div><div className="text-lg font-mono text-white">{bestState.comp.Cu.toFixed(2)}</div></div>
+                                                <div><div className="text-xs text-slate-400">Magnesium</div><div className="text-lg font-mono text-white">{bestState.comp.Mg.toFixed(3)}</div></div>
+                                                <div><div className="text-xs text-slate-400">Zinc</div><div className="text-lg font-mono text-white">Bal.</div></div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-900/50 rounded-lg p-4">
+                                            <div className="text-xs text-slate-500 uppercase font-bold mb-3">Physical Descriptors</div>
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-end border-b border-slate-700 pb-2">
+                                                    <div className="text-sm text-slate-400">Mismatch (δ)</div>
+                                                    <div className="text-xl font-mono text-emerald-400">{bestState.physics.delta.toFixed(4)}</div>
+                                                </div>
+                                                <div className="flex justify-between items-end border-b border-slate-700 pb-2">
+                                                    <div className="text-sm text-slate-400">EN Diff (Δχ)</div>
+                                                    <div className="text-xl font-mono text-emerald-400">{bestState.physics.deltaChi.toFixed(4)}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-900/50 rounded-lg p-4">
+                                            <div className="text-xs text-slate-500 uppercase font-bold mb-3">Predicted Performance</div>
+                                            <div className="space-y-2">
+                                                {[
+                                                    { label: 'UTS', val: bestState.props.UTS, target: targets.UTS, unit: 'MPa' },
+                                                    { label: 'EL', val: bestState.props.EL, target: targets.EL, unit: '%' },
+                                                    { label: 'HV', val: bestState.props.HV, target: targets.HV, unit: '' }
+                                                ].map(item => (
+                                                    <div key={item.label} className="flex items-center justify-between">
+                                                        <span className="text-sm font-medium text-slate-300 w-8">{item.label}</span>
+                                                        <div className="flex-1 mx-3 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-blue-500 transition-all duration-300" style={{width: `${Math.min(100, (item.val / (item.target * 1.5)) * 100)}%`}} />
+                                                        </div>
+                                                        <div className="text-right w-20">
+                                                            <span className="font-mono text-sm text-white">{item.val.toFixed(1)}</span>
+                                                            <span className="text-[10px] text-slate-500 ml-1">{item.unit}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
